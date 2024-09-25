@@ -1,8 +1,8 @@
-Import-Module ActiveDirectory
-
 [console]::WindowWidth = 40; 
 [console]::WindowHeight = 20; 
 [console]::BufferWidth = [console]::WindowWidth
+
+Import-Module ActiveDirectory
 
 $fileName = Get-Date -Format "dd.MM.yyyy"
 $fileName = "$env:LOCALAPPDATA\TroubleshootingTool\Logs\" + $fileName + ".log"
@@ -18,6 +18,7 @@ $minWindowWidth = 600
 $LogToConsole = $True
 
 $Global:RemoveMode = $False
+$Global:TargetUser
 
 #region XAML UI
 #===========================================================================
@@ -42,7 +43,7 @@ $inputXML = @"
 		<Grid.RowDefinitions>
             <RowDefinition Height="32"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="30"/>
+            <RowDefinition Height="60"/>
 		</Grid.RowDefinitions>
         <TextBox Name="TargetUser" Margin="2,2,64,2" Padding="5,0,0,0" Height="28" Grid.Column="0" Grid.Row="0" VerticalAlignment="Top" VerticalContentAlignment="Center"/>
         <Button Name="SearchTargetButton" Margin="2,2,2,2" Content="Search" HorizontalAlignment="Right" Width="60" Height="28" Grid.Column="0" Grid.Row="0" VerticalAlignment="Top"/>
@@ -65,17 +66,6 @@ $inputXML = @"
         <ListBox Background="#FFFFFF" Name="RecipientUsers" Margin="2,30,2,2" SelectionMode="Extended" Grid.Column="2" Grid.Row="1" MinHeight="200" MinWidth="100">
         </ListBox>
 
-        <Grid Grid.Column="2" Grid.Row="2">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*"/>
-            </Grid.RowDefinitions>
-            <Button Name="ClearUsersButton" Content="Clear All Users" Margin="2,2,2,2" VerticalContentAlignment="Center" Grid.Column="0"/>
-            <Button Name="RemoveUsersButton" Content="Remove Selected Users" Margin="2,2,2,2" VerticalContentAlignment="Center" Grid.Column="1"/>
-        </Grid>
         <Grid Grid.Column="0" Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -83,9 +73,24 @@ $inputXML = @"
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
+                <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Button Name="SelectAllButton" Content="Select All Groups" Margin="2,2,2,2" VerticalContentAlignment="Center" Grid.Column="0"/>
             <Button Name="ToggleAddRemoveButton" Content="Toggle Mode" Margin="2,2,2,2" VerticalContentAlignment="Center" Grid.Column="1"/>
+            <Button Name="AddGroupButton" Content="Add Group To User" Margin="2,2,2,2" VerticalContentAlignment="Center" IsEnabled="False" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"/>
+        </Grid>
+        <Grid Grid.Column="2" Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Button Name="ClearUsersButton" Content="Clear All Users" Margin="2,2,2,2" VerticalContentAlignment="Center" Grid.Column="0"/>
+            <Button Name="RemoveUsersButton" Content="Remove Selected Users" Margin="2,2,2,2" VerticalContentAlignment="Center" Grid.Column="1"/>
+            <Button Name="AddUsersButton" Content="Add Users From File" Margin="2,2,2,2" VerticalContentAlignment="Center" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"/>
         </Grid>
 	</Grid>
 </Window>
@@ -128,33 +133,38 @@ Function Write-Log {
 }
 
 Function Get-TargetGroups() {
-    $userID = $WPFTargetUser.Text
+    param(
+        $Target = $Global:TargetUser
+    )
     try {
-        $user = Get-ADUser -Identity $userID -Properties *
-        $userID = $user.SamAccountName
-        $WPFTargetUserLabel.Content = $userID + "'s Groups:"
+        $UserID = (Get-ADUser -Identity $Target).SamAccountName
+        $WPFTargetUserLabel.Content = $UserID + "'s Groups:"
+        $WPFAddGroupButton.IsEnabled = $True
+        $Global:TargetUser = $UserID
+        $WPFAddGroupButton.Content = "Add Group to $($UserID)"
+
+        $WPFTargetUserGroups.Items.Clear()
+        $groups = Get-ADPrincipalGroupMembership $UserID | Select-Object name, SamAccountName
+        $groups = $groups | Sort-Object -Property name # Sorting the groups by name so they appear the same as in AD
+
+        foreach ($group in $groups) { $WPFTargetUserGroups.Items.Add($group.name) }
     }
     catch {
-        $WPFTargetUserLabel.Content = "Couldnt find user: `"$($userID)`""
+        $WPFTargetUserLabel.Content = "Couldnt find user: `"$($Target)`""
     }
-
-    $WPFTargetUserGroups.Items.Clear()
-    $groups = Get-ADPrincipalGroupMembership $userID | Select-Object name, SamAccountName
-    $groups = $groups | Sort-Object -Property name # Sorting the groups by name so they appear the same as in AD
-
-    foreach ($group in $groups) { $WPFTargetUserGroups.Items.Add($group.name) }
 }
 
 Function Get-Recipients() {
-    $userID = $WPFRecipientUser.Text
+    param(
+        $UserIn = $WPFRecipientUser.Text
+    )
     try {
-        $user = Get-ADUser -Identity $userID -Properties *
-        $userID = $user.SamAccountName # Get the accounts proper capitalization
-        if ($WPFRecipientUsers.Items.Contains($userID)) {
-            $WPFRecipientUserLabel.Content = "User is already added"
+        $UserID = (Get-ADUser -Identity $UserIn).SamAccountName # Get the accounts proper capitalization
+        if ($WPFRecipientUsers.Items.Contains($UserID)) {
+            $WPFRecipientUserLabel.Content = "$($UserID) is already added"
         }
         else {
-            $WPFRecipientUsers.Items.Add($userID)
+            $WPFRecipientUsers.Items.Add($UserID)
             $WPFRecipientUserLabel.Content = "Users to receive groups"
         }
     }
@@ -163,10 +173,12 @@ Function Get-Recipients() {
     }
 }
 
-$WPFSearchTargetButton.Add_Click({ Get-TargetGroups })
+$WPFSearchTargetButton.Add_Click({ 
+        Get-TargetGroups -Target $WPFTargetUser.Text
+    })
 $WPFTargetUser.Add_KeyDown({
         if ($_.Key -eq "Enter") {
-            Get-TargetGroups
+            Get-TargetGroups -Target $WPFTargetUser.Text
             $WPFTargetUser.Text = ""
         }
     })
@@ -205,6 +217,102 @@ $WPFRemoveUsersButton.Add_Click({
         $WPFRecipientUsers.Items.Clear()
         foreach ($item in $temp) {
             $WPFRecipientUsers.Items.Add($item)
+        }
+    })
+
+$WPFAddGroupButton.Add_Click({
+        $rawXML = @"
+<Window Name="window" x:Class="WpfApp2.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:WpfApp2"
+        Title="Add Group" Background="#FFD5DBDE" ResizeMode="NoResize" Height="125" Width="355">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="30"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Label Name="GroupNameLabel" Margin="3,3,3,0" Content="Enter Group Name:" Grid.Row="0" Grid.ColumnSpan="4"/>
+        <TextBox Name="GroupName" Margin="5,0,5,0" VerticalContentAlignment="Center" Grid.Row="1" Grid.ColumnSpan="4"/>
+        <Button Name="GroupConfirmButton" Content="OK" Margin="5,5,5,5" Grid.Row="2" Grid.Column="2"/>
+        <Button Name="GroupCancelButton" Content="Cancel" Margin="0,5,5,5" Grid.Row="2" Grid.Column="3"/>
+    </Grid>
+</Window>
+"@
+        $rawXML = $rawXML -replace '^<Win.*', '<Window'
+        
+        [void][System.Reflection.Assembly]::LoadWithPartialName('presentationframework')
+        [xml]$GroupXAML = $rawXML
+
+        $GroupReader = (New-Object System.Xml.XmlNodeReader $GroupXAML)
+        $Window = [Windows.Markup.XamlReader]::Load( $GroupReader )
+        $GroupXAML.SelectNodes("//*[@Name]") | ForEach-Object { Set-Variable -Name "WPF$($_.Name)" -Value $Window.FindName($_.Name) }
+        #endregion
+
+        Function Find-Group() {
+            try {
+                $ADGroup = Get-ADGroup -Identity $WPFGroupName.Text
+                Write-Log "Added $($Global:TargetUser) to $($ADGroup.Name)"
+
+                # Turns out it takes a couple of seconds for AD to update the groups in a user, so this kinda isnt very practical
+                Add-ADGroupMember -Identity $ADGroup -Members $Global:TargetUser
+                Start-Sleep 5 # Sleeping to hopefully update it properly
+
+                Get-TargetGroups # Update the groups after the new one is added
+                $Window.Hide() # Closing the window after a new group is added
+            }
+            catch {
+                $WPFGroupNameLabel.Content = "Couldn't find group: $($WPFGroupName.Text)"
+            }
+        }
+
+        $WPFGroupConfirmButton.Add_Click({ Find-Group })
+        $WPFGroupName.Add_KeyDown({
+                if ($_.Key -eq "Enter") { Find-Group }
+            })
+
+        $WPFGroupCancelButton.Add_Click({ $Window.Hide() })
+
+        $Window.ShowDialog() | Out-Null
+
+    })
+
+$WPFAddUsersButton.Add_Click({
+        $Dialog = [Microsoft.Win32.OpenFileDialog]::new()
+        $Dialog.FileName = "In"
+        $Dialog.DefaultExt = ".csv"
+        $Dialog.Filter = "CSV Files|*.csv"
+
+        $Keywords = @("User", "Users", "Username", "Usernames", "User Name", "User Names", "Account", 
+            "Accounts", "LAN", "AccountID", "AccountIDs", "SamAccountName", "SamAccountNames")
+
+        $FoundUsers = $False
+        if ($Dialog.ShowDialog()) {
+            $UserFile = Import-Csv -Path $Dialog.FileName
+
+            foreach ($Word in $Keywords) {
+                if (($UserFile | Get-Member -MemberType NoteProperty).name -contains $Word) {
+                    $UserFile.$Word | ForEach-Object { Get-Recipients -UserIn $_ }
+                    $FoundUsers = $True
+                    break
+                }
+            }
+
+            if ($FoundUsers -eq $False) {
+                [System.Windows.MessageBox]::Show("Could not find any columns in the csv file headed with: `n$($Keywords)", "Unable to find users")
+            }
+            #$temp = "Users"
+            #$UserFile.$temp | ForEach-Object { Get-Recipients -UserIn $_ } 
+            #           ^ Trying to find a better way to do this, this requires that the header on the csv column is "Users"
         }
     })
 
