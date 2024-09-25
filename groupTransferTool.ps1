@@ -14,8 +14,10 @@ $windowWidth = 800
 $minWindowHeight = 600
 $minWindowWidth = 600
 
-#Whether the logs will be output to the powershell window aswell as the file
+# Whether the logs will be output to the powershell window aswell as the file
 $LogToConsole = $True
+# Whether the logs will show when the tool is opened and closed
+$LogOpening = $False 
 
 $Global:RemoveMode = $False
 $Global:TargetUser
@@ -137,8 +139,9 @@ Function Get-TargetGroups() {
         $Target = $Global:TargetUser
     )
     try {
-        $UserID = (Get-ADUser -Identity $Target).SamAccountName
-        $WPFTargetUserLabel.Content = $UserID + "'s Groups:"
+        $User = Get-ADUser -Identity $Target -Properties DisplayName | Select-Object DisplayName, SamAccountName
+        $UserID = $User.SamAccountName
+        $WPFTargetUserLabel.Content = "$($User.DisplayName) ($UserID)'s Groups:"
         $WPFAddGroupButton.IsEnabled = $True
         $Global:TargetUser = $UserID
         $WPFAddGroupButton.Content = "Add Group to $($UserID)"
@@ -354,6 +357,6 @@ Write-Host "Using Log file at $($fileName)"
 [Console]::SetCursorPosition(0, 0)
 [Console]::SetCursorPosition(0, 3)
 
-Write-Log -Log "Group Transfer Tool Opened" -IsNewLine $True
+if ($LogOpening) { Write-Log -Log "Group Transfer Tool Opened" -IsNewLine $True }
 
 $Form.ShowDialog() | Out-Null
