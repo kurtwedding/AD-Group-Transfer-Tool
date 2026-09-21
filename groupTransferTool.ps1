@@ -1,6 +1,9 @@
-[console]::WindowWidth = 40; 
-[console]::WindowHeight = 20; 
-[console]::BufferWidth = [console]::WindowWidth
+# Protecting against thrown errors in a compiled GUI.
+if($Host.Name -eq 'ConsoleHost') {
+    [console]::WindowWidth = 40; 
+    [console]::WindowHeight = 20; 
+    [console]::BufferWidth = [console]::WindowWidth
+}
 
 Import-Module ActiveDirectory
 
@@ -354,8 +357,6 @@ $WPFTransferGroupsButton.Add_Click({
     })
 
 Write-Host "Using Log file at $($fileName)"
-[Console]::SetCursorPosition(0, 0)
-[Console]::SetCursorPosition(0, 3)
 
 if ($LogOpening) { Write-Log -Log "Group Transfer Tool Opened" -IsNewLine $True }
 
