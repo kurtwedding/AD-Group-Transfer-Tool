@@ -8,8 +8,7 @@ if($Host.Name -eq 'ConsoleHost') {
 Import-Module ActiveDirectory
 
 $fileName = Get-Date -Format "dd.MM.yyyy"
-$fileName = "$env:LOCALAPPDATA\TroubleshootingTool\Logs\" + $fileName + ".log"
-
+$fileName = "$env:LOCALAPPDATA\GroupTransferTool\Logs\" + $fileName + ".log"
 
 $windowHeight = 600
 $windowWidth = 800
