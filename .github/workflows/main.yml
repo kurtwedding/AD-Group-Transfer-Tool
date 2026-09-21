@@ -21,7 +21,8 @@ jobs:
                             -outputFile ./dist/GroupTransferTool.exe `
                             -noConsole `
                             -title "Group Transfer Tool"
-                            -version "1.0.0"
+                            -version "1.0.0.0"
+                            -verbose
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
