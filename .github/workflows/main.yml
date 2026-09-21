@@ -1,0 +1,37 @@
+name: Package Group Transfer Tool
+
+on: 
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ps2exe
+        shell: pwsh
+        run: Install-Module -Name ps2exe -Force -Scope CurrentUser
+
+      - name: Compile to Exe
+        shell: pwsh
+        run: Invoke-ps2exe -inputFile ./groupTransferTool.ps1 `
+                            -outputFile ./dist/GroupTransferTool.exe `
+                            -noConsole `
+                            -title "Group Transfer Tool"
+                            -version "1.0.0"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GroupTransferTool
+          path: dist/GroupTransferTool.exe
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprop/action-gh-release@v2
+        with:
+          files: dist/GroupTransferTool.exe
+        
