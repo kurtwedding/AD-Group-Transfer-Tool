@@ -20,8 +20,8 @@ jobs:
         run: Invoke-ps2exe -inputFile ./groupTransferTool.ps1 `
                             -outputFile ./dist/GroupTransferTool.exe `
                             -noConsole `
-                            -title "Group Transfer Tool"
-                            -version "1.0.0.0"
+                            -title "Group Transfer Tool" `
+                            -version "1.0.0.0" `
                             -verbose
 
       - name: Upload build artifact
